@@ -50,6 +50,14 @@ PPCI_CONFIG0 returnConfigHeader(BYTE busNumber, BYTE deviceNumber, BYTE pci_eFun
 }
 
 
+DWORD readWord(BYTE busNumber, BYTE deviceNumber, BYTE pci_eFunctionNumber, DWORD number){
+
+	DWORD dwFuncAddr = dwFuncAddr | (busNumber << 16) | (deviceNumber << 11) | (pci_eFunctionNumber << 8) | (number << 2) | (1 << 31);
+	__outpdw(PCI_CONFIG_ADR, dwFuncAddr);
+	return  __inpdw(PCI_CONFIG_DATA);
+
+}
+
 int AppScroll(HWND hWnd)
 {
 	int   i;
@@ -84,6 +92,7 @@ int AppScroll(HWND hWnd)
 		for (int deviceNumber = 0; deviceNumber < 32; deviceNumber++){
 			for (int functionNumber = 0; functionNumber < 8; functionNumber++){
 				PPCI_CONFIG0 current = returnConfigHeader(busNumber, deviceNumber, functionNumber);
+				
 				WORD wVendorID = _inmw((DWORD_PTR)&current->VendorID);
 					if (wVendorID != 0xFFFF){
 
@@ -94,6 +103,7 @@ int AppScroll(HWND hWnd)
 						WORD vendorId = _inmw((DWORD_PTR)&current->SubSystID);
 
 						wsprintf(szBuffer[cLine++], "Bus Number: %d, Device Number: %d, Function Number: %d", busNumber, deviceNumber, functionNumber);
+						wsprintf(szBuffer[cLine++], "VendorID: %d",wVendorID);
 						wsprintf(szBuffer[cLine++], "ClassCode: %x, Sub Class Code: %x", baseClass, subClass);
 						wsprintf(szBuffer[cLine++], "Programming Interface : %x, Subsystem vendorID : %x, SubsystemID : %x", progInterface, subsystemVendorId, vendorId);
 						PCI_CLASS_TABLE *tab = PciClassTable;
@@ -120,8 +130,20 @@ int AppScroll(HWND hWnd)
 						wsprintf(szBuffer[cLine++], "----------------------------------------------------------------------------------------------------------------------------------");
 					}
 			}
+			}
 		}
-	}
+	
+	
+	
+		WORD VendorID = LOWORD(readWord(0, 31, 3, 0));
+		if (VendorID != 0xFFFF){
+			BYTE base = HIWORD(readWord(0, 31, 3, 2)) | HIBYTE(LOWORD(readWord(0, 31, 3, 2)));
+			wsprintf(szBuffer[cLine++], "BaseClass : %d", base);
+			wsprintf(szBuffer[cLine++], "VendorID : %d", VendorID);
+		}
+
+
+
 
 
 
