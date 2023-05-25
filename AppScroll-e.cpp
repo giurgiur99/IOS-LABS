@@ -27,72 +27,27 @@ int  cLine;										// number of current line in the display buffer
 // Declarations of external functions
 void DisplWindow(HWND hWnd);
 
+//--------------------------------------------------------------------
+// Function AppScroll
+//--------------------------------------------------------------------
+//
+// Function:	IOS application example with vertical scroll bar
+//
+// Parameters:	- Handle to the application window
+//
+// Returns:		0 - Operation completed successfully
+//				1 - Error at initializing the Hw driver
+//
+//--------------------------------------------------------------------
 
-// Consider an 8-bit read/write port with the address defined by the PORT constant
-// and an 8-bit mask defined by the BIT4 constant as (1 << 4). Use the __inp() and __outp()
-// functions of the Marvin HW driver to write the sequences of instructions in the C language that
-// perform the following operations:
-// • Wait until the bit of the port defined by the BIT4 mask becomes set;
-// • Set the bit of the port defined by the BIT4 mask;
-// • Clear the bit of the port defined by the BIT4 mask;
-// • Complement (toggle) the bit of the port defined by the BIT4 mask.
-// Other bits of the port should not be altered by the sequences of instructions.
-void initialize_HW()
-{
-	if (!HwOpen()) {
-		dwLastError = GetLastError();
-		printf("\nError initializing the HW library: %d", dwLastError);
-		return;
-	}
-
-	printf("\nHW initialization: OK\n");
-	return;
-}
-
-
-// In the AppScroll-e.cpp source file, write a function to initialize the COM1 serial port
-// with the following parameters: binary rate of 115,200 bits/s; character length of 8 bits; no
-// parity bit; 1 stop bit. Use the ComDef-e.h definition file for the serial port. Perform the following steps to initialize the serial port:
-void initialize_COM1()
-{
-	// Open the COM1 port
-	hFile = CreateFile(TEXT("COM1"), GENERIC_READ | GENERIC_WRITE, 0, NULL, OPEN_EXISTING, 0, NULL);
-	if (hFile == INVALID_HANDLE_VALUE) {
-		dwLastError = GetLastError();
-		printf("\nError opening the COM1 port: %d", dwLastError);
-		return;
-	}
-
-
-	//set bit 7 of LCR to 1
-	__outp(COM1 + LCR, LCR_DLAB);
-	int com1_input = __inp(COM1 + LCR);
-
-	//Write the least significant byte of the divisor to the DLR_LSB register and the most significant byte of the divisor to the DLR_MSB register
-	//set the binary rate to 19,200 
-	__outp(COM1 + DLR_LSB, 0x06);
-	__outp(COM1 + DLR_MSB, 0x00);
-
-	//write to LCR register a byte
-	__outp(COM1 + LCR, 0x03); // 0000 0011
-
-	//set DTR, RTS, OUT2 for MCR register
-	__outp(COM1 + MCR, MCR_DTR | MCR_RTS | MCR_OUT2);
-	return;
-
-}
-
-
-void send(char a){
-	__outp(COM1 + THR, a);
-	while ((__inp(COM1 + LSR) & LSR_THR_EMPTY) == 0);
-}
-
-char receive(){
-	while ((__inp(COM1 + LSR) & LSR_DATA_READY) == 0);
-	return __inp(COM1 + RBR);
-
-}
+// In the AppScroll-e.cpp source file, first call the PciBaseAddress() function to determine the base address of the PCIe extended configuration space and store the base address
+// in a global variable. If the function returns 0 or 1, the base address cannot be successfully
+// determined, and in this case the application should return with an error code. Otherwise, display the base address as two double-words. Next, write a function that returns a pointer to a
+// PCIe function’s configuration header using the PCIe enhanced configuration mechanism. The
+// function has as input parameters the bus number, device number, and PCIe function number,
+// and it returns a pointer to a PCI_CONFIG0 structure containing the PCIe function’s configuration header. The enhanced configuration mechanism is described in Section 2.6.3. In this
+// function, use the global variable containing the base address of the PCIe extended configuration space. Finally, use this function to search for PCIe devices on each bus between 0 and 63,
+// for each device (0..31), and for each function (0..7) of a device. For each existing PCIe device, the following information should be displayed (on separate lines):
 
 PPCI_CONFIG0 returnConfigHeader(BYTE busNumber, BYTE deviceNumber, BYTE pci_eFunctionNumber){
 
@@ -114,7 +69,99 @@ DWORD readWord(BYTE busNumber, BYTE deviceNumber, BYTE pci_eFunctionNumber, DWOR
 
 int AppScroll(HWND hWnd)
 {
+	int   i;
+
+	char szMes0[] = "Error initializing the Hw driver";
+	char szMes1[] = "IOS Application";
+
+	// Initialize the Hw library
+	if (!HwOpen()) {
+		wsprintf(szBuffer[0], szMes0);
+		MessageBox(NULL, szBuffer[0], "HwOpen", MB_ICONSTOP);
+		return 1;
+	}
+
+	// Erase the display buffer and the window contents
+	for (i = 0; i < NLIN; i++) {
+		memset (szBuffer[i], ' ', NCOL);
+	}
+	cLine = 1;
+
+	// Copy the start message into the display buffer and display the message
+	wsprintf(szBuffer[cLine], szMes1);
+	cLine += 2;
+	DisplWindow(hWnd);
+
+// Extend Application 2.7.2 to display additional information about the existing
+// PCIe devices in the computer. The additional information that should be displayed is the following:
+// • Vendor ID, vendor descriptor;
+// • Device ID, chip descriptors.
+// Use the PCI-vendor-dev.h header file that has been added to the project. To display
+// the vendor descriptor, search in the PciVenTable array using the vendor ID as search key
+// and display the CONST CHAR *VenFull member of the PCI_VENTABLE structure. To display
+// the chip descriptors, search in the PciDevTable array using the vendor ID and device ID as
+// search keys and display the CONST CHAR *Chip and CONST CHAR *ChipDesc members of
+// the PCI_DEVTABLE structure.
+// Notes
+// • The number of entries in the PciVenTable array is defined as PCI_V
+
+
+	for (int busNumber = 0; busNumber < 16; busNumber++){
+		for (int deviceNumber = 0; deviceNumber < 32; deviceNumber++){
+			for (int functionNumber = 0; functionNumber < 8; functionNumber++){
+				PPCI_CONFIG0 current = returnConfigHeader(busNumber, deviceNumber, functionNumber);
+				
+				WORD wVendorID = _inmw((DWORD_PTR)&current->VendorID);
+					if (wVendorID != 0xFFFF){
+
+						BYTE baseClass = _inm((DWORD_PTR)&current->BaseClass);
+						BYTE subClass = _inm((DWORD_PTR)&current->SubClass);
+						BYTE progInterface = _inm((DWORD_PTR)&current->ProgInterface);
+						WORD subsystemVendorId = _inmw((DWORD_PTR)&current->SubSystVendorID);
+						WORD vendorId = _inmw((DWORD_PTR)&current->SubSystID);
+
+						wsprintf(szBuffer[cLine++], "Bus Number: %d, Device Number: %d, Function Number: %d", busNumber, deviceNumber, functionNumber);
+						wsprintf(szBuffer[cLine++], "VendorID: %d",wVendorID);
+						wsprintf(szBuffer[cLine++], "ClassCode: %x, Sub Class Code: %x", baseClass, subClass);
+						wsprintf(szBuffer[cLine++], "Programming Interface : %x, Subsystem vendorID : %x, SubsystemID : %x", progInterface, subsystemVendorId, vendorId);
+						PCI_CLASS_TABLE *tab = PciClassTable;
+						for (int i = 0; i < PCI_CLASS_TABLE_LEN; i++){
+							
+							BYTE classCode = PciClassTable[i].Class;
+							BYTE subclassCode = PciClassTable[i].SubClass;
+							BYTE progIf = PciClassTable[i].ProgIf;
+							if ((classCode == baseClass) && (subclassCode == subClass)){
+								wsprintf(szBuffer[cLine++], "Class-Subclass Descriptor : %s, Prog Interface Descriptor : %s", PciClassTable[i].ClassDesc, PciClassTable[i].ProgIfDesc);
+							}
+							break;
+							
+							//	wsprintf(szBuffer[cLine++], "Class Descriptor: , Subclass Descriptor: ,Programming Interface Descriptor: ", tab[current->BaseClass]);
+						}
+
+
+						for (int i = 0; i < PCI_VENTABLE_LEN; i++){
+							if (wVendorID == PciVenTable[i].VenId){
+								wsprintf(szBuffer[cLine++], "VenFull : %s", PciVenTable[i].VenFull);
+							}
+						}
+
+						wsprintf(szBuffer[cLine++], "----------------------------------------------------------------------------------------------------------------------------------");
+					}
+			}
+			}
+		}
 	
+	
+	
+		WORD VendorID = LOWORD(readWord(0, 31, 3, 0));
+		if (VendorID != 0xFFFF){
+			BYTE base = HIWORD(readWord(0, 31, 3, 2)) | HIBYTE(LOWORD(readWord(0, 31, 3, 2)));
+			wsprintf(szBuffer[cLine++], "BaseClass : %d", base);
+			wsprintf(szBuffer[cLine++], "VendorID : %d", VendorID);
+		}
+
+
+
 
 
 
